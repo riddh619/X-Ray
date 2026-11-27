@@ -46,6 +46,14 @@ export type ScoringRule = {
   enabled: boolean;
 };
 
+function getRuleWeight(ruleId: string, customRules?: Record<string, ScoringRule>): number {
+  if (customRules && customRules[ruleId]) {
+    const r = customRules[ruleId];
+    return r.enabled !== false ? r.points : 0;
+  }
+  return DEFAULT_WEIGHTS[ruleId] ?? 0;
+}
+
 // ---------------------------------------------------------------------------
 // Main scoring function
 // ---------------------------------------------------------------------------
@@ -54,19 +62,16 @@ export function assessRisk(
   urlAnalysis: UrlAnalysis | null,
   domAnalysis: DomAnalysis | null,
   networkEvents: MonitoredRequest[],
-  canaryResult: { transmissionDetected: boolean } | null,
+  canaryResult: { transmissionDetected: boolean } | null = null,
   scoringRules?: Record<string, ScoringRule>,
 ): RiskAssessment {
-  const weights = scoringRules || DEFAULT_WEIGHTS;
   const contributions: RiskContribution[] = [];
   let score = 0;
-
-  const level = scoreToLevel(score);
 
   // --- 1. Known malicious domain ---
   if (urlAnalysis?.hostname &&
       isKnownMaliciousDomain(urlAnalysis.hostname)) {
-    const w = weights.knownMaliciousDomain?.points ?? DEFAULT_WEIGHTS.knownMaliciousDomain;
+    const w = getRuleWeight('knownMaliciousDomain', scoringRules);
     contributions.push({
       ruleId: 'knownMaliciousDomain',
       label: 'Known malicious domain',
@@ -78,7 +83,7 @@ export function assessRisk(
 
   // --- 2. Homoglyph detection ---
   if (urlAnalysis?.homoglyphRisk && urlAnalysis.homoglyphDetail) {
-    const w = weights.homoglyphDetection?.points ?? DEFAULT_WEIGHTS.homoglyphDetection;
+    const w = getRuleWeight('homoglyphDetection', scoringRules);
     contributions.push({
       ruleId: 'homoglyphDetection',
       label: 'Homoglyph / confusable character',
@@ -90,7 +95,7 @@ export function assessRisk(
 
   // --- 3. Mixed script (only add if not already homoglyph flagged) ---
   if (urlAnalysis?.mixedScriptRisk && !urlAnalysis.homoglyphRisk) {
-    const w = weights.mixedScriptDomain?.points ?? DEFAULT_WEIGHTS.mixedScriptDomain;
+    const w = getRuleWeight('mixedScriptDomain', scoringRules);
     contributions.push({
       ruleId: 'mixedScriptDomain',
       label: 'Mixed-script domain',
@@ -102,7 +107,7 @@ export function assessRisk(
 
   // --- 4. Brand/domain mismatch ---
   if (urlAnalysis?.brandMatch?.mismatch && urlAnalysis.brandMatch.claimedBrand) {
-    const w = weights.brandDomainMismatch?.points ?? DEFAULT_WEIGHTS.brandDomainMismatch;
+    const w = getRuleWeight('brandDomainMismatch', scoringRules);
     contributions.push({
       ruleId: 'brandDomainMismatch',
       label: 'Brand/domain mismatch',
@@ -113,8 +118,8 @@ export function assessRisk(
   }
 
   // --- 5. OTP field (low points alone - cannot cause HIGH alone) ---
-  if (domAnalysis?.otpFields.length > 0) {
-    const w = weights.otpFieldDetected?.points ?? DEFAULT_WEIGHTS.otpFieldDetected;
+  if (domAnalysis?.otpFields && domAnalysis.otpFields.length > 0) {
+    const w = getRuleWeight('otpFieldDetected', scoringRules);
     contributions.push({
       ruleId: 'otpFieldDetected',
       label: 'OTP input field',
@@ -125,7 +130,7 @@ export function assessRisk(
   }
 
   // --- 6. Suspicious outbound request after OTP interaction ---
-  const sensitiveCorrelatedEvents = networkEvents.filter(e =>
+  const sensitiveCorrelatedEvents = (networkEvents || []).filter(e =>
     e.correlatedWithSensitiveInput &&
     e.api !== undefined &&
     e.destinationHost &&
@@ -133,7 +138,7 @@ export function assessRisk(
     isDestinationSuspicious(e.destinationHost)
   );
   if (sensitiveCorrelatedEvents.length > 0) {
-    const w = weights.sensitiveOutboundAfterOtp?.points ?? DEFAULT_WEIGHTS.sensitiveOutboundAfterOtp;
+    const w = getRuleWeight('sensitiveOutboundAfterOtp', scoringRules);
     contributions.push({
       ruleId: 'sensitiveOutboundAfterOtp',
       label: 'Sensitive-data exfiltration pattern',
@@ -144,8 +149,8 @@ export function assessRisk(
   }
 
   // --- 7. Hidden suspicious iframe ---
-  if (domAnalysis?.hiddenIframes.length > 0) {
-    const w = weights.hiddenSuspiciousIframe?.points ?? DEFAULT_WEIGHTS.hiddenSuspiciousIframe;
+  if (domAnalysis?.hiddenIframes && domAnalysis.hiddenIframes.length > 0) {
+    const w = getRuleWeight('hiddenSuspiciousIframe', scoringRules);
     contributions.push({
       ruleId: 'hiddenSuspiciousIframe',
       label: 'Hidden / suspicious iframe',
@@ -157,7 +162,7 @@ export function assessRisk(
 
   // --- 8. Canary exfiltration attempt ---
   if (canaryResult?.transmissionDetected) {
-    const w = weights.canaryExfiltrationAttempt?.points ?? DEFAULT_WEIGHTS.canaryExfiltrationAttempt;
+    const w = getRuleWeight('canaryExfiltrationAttempt', scoringRules);
     contributions.push({
       ruleId: 'canaryExfiltrationAttempt',
       label: 'Confirmed Canary exfiltration attempt',
@@ -169,7 +174,7 @@ export function assessRisk(
 
   // --- 9. Suspicious URL patterns ---
   if (urlAnalysis?.suspiciousPatterns && urlAnalysis.suspiciousPatterns.length > 0) {
-    const w = weights.suspiciousUrlPattern?.points ?? DEFAULT_WEIGHTS.suspiciousUrlPattern;
+    const w = getRuleWeight('suspiciousUrlPattern', scoringRules);
     contributions.push({
       ruleId: 'suspiciousUrlPattern',
       label: 'Suspicious URL pattern',
@@ -181,7 +186,7 @@ export function assessRisk(
 
   // --- 10. Insecure HTTP ---
   if (urlAnalysis && !urlAnalysis.isHttps) {
-    const w = weights.insecureHttp?.points ?? DEFAULT_WEIGHTS.insecureHttp;
+    const w = getRuleWeight('insecureHttp', scoringRules);
     contributions.push({
       ruleId: 'insecureHttp',
       label: 'Insecure HTTP',

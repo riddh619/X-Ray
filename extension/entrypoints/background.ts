@@ -3,7 +3,7 @@
  * Coordinates monitoring, risk assessment, storage, and browser actions.
  */
 
-import { defineBackground } from 'wxt/utils/define-background'
+import { defineBackground } from 'wxt/sandbox'
 import type { ForensicsEvent, ProtectionSettings, TabState } from '../types'
 import {
   initDnrRules,
@@ -27,7 +27,7 @@ export default defineBackground(() => {
     privacyMode: false,
     externalAiConsent: false,
     monitoringEnabled: true,
-    scoringRules: {},
+    scoringRules: [],
   }
 
   // ---- Lifecycle ----
@@ -162,9 +162,17 @@ export default defineBackground(() => {
           }
 
           case 'XRAY_GET_STATE': {
-            const key = STORAGE.STATE(tabId)
+            let targetTabId = message.payload?.tabId || sender.tab?.id || 0
+            if (!targetTabId) {
+              const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true })
+              targetTabId = activeTabs[0]?.id || 0
+            }
+            const key = STORAGE.STATE(targetTabId)
             const state = (await chrome.storage.local.get(key))[key]
-            sendResponse(state || null)
+            const eventsKey = STORAGE.EVENTS(targetTabId)
+            const events = (await chrome.storage.local.get(eventsKey))[eventsKey] || []
+            const settings = await getSettings()
+            sendResponse({ state: state || null, events, settings, strictActive: isStrictModeActive() })
             break
           }
 

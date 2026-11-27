@@ -5,6 +5,7 @@
  */
 
 import type { BrandRegistryEntry, BrandMatch, UrlAnalysis } from '../types';
+import brandRegistryJson from '../data/brand-registry.json';
 
 // ---------------------------------------------------------------------------
 // Unicode Confusable Detection (Simplified UTS #39)
@@ -243,15 +244,11 @@ let brandRegistryCache: BrandRegistryEntry[] | null = null;
 
 async function loadBrandRegistry(): Promise<BrandRegistryEntry[]> {
   if (brandRegistryCache) return brandRegistryCache;
-  try {
-    const response = await fetch(chrome.runtime.getURL('/data/brand-registry.json'));
-    const data = await response.json();
-    brandRegistryCache = data.brands || [];
+  if (brandRegistryJson && Array.isArray((brandRegistryJson as any).brands)) {
+    brandRegistryCache = (brandRegistryJson as any).brands as BrandRegistryEntry[];
     return brandRegistryCache;
-  } catch (e) {
-    console.warn('[X-Ray] Could not load brand registry, using defaults:', e);
-    return [];
   }
+  return [];
 }
 
 export async function analyzeUrl(rawUrl: string): Promise<UrlAnalysis> {
@@ -285,14 +282,22 @@ export async function analyzeUrl(rawUrl: string): Promise<UrlAnalysis> {
   const hostname = url.hostname;
   const protocol = url.protocol;
 
-  // Get registered domain (simplified - last two parts)
-  const parts = hostname.split('.');
-  const registeredDomain = parts.length >= 2
-    ? parts.slice(-2).join('.')
-    : hostname;
-  const subdomain = parts.length > 2
-    ? parts.slice(0, -2).join('.')
-    : '';
+  // Multi-part TLD aware registered domain extraction
+  const multiPartTlds = ['co.uk', 'com.au', 'co.in', 'net.in', 'gov.in', 'org.uk', 'com.br', 'co.jp'];
+  const parts = hostname.toLowerCase().split('.');
+  let registeredDomain = hostname;
+  let subdomain = '';
+
+  if (parts.length > 2) {
+    const lastTwo = parts.slice(-2).join('.');
+    if (multiPartTlds.includes(lastTwo) && parts.length >= 3) {
+      registeredDomain = parts.slice(-3).join('.');
+      subdomain = parts.slice(0, -3).join('.');
+    } else {
+      registeredDomain = parts.slice(-2).join('.');
+      subdomain = parts.slice(0, -2).join('.');
+    }
+  }
 
   // Check for homoglyphs
   const homoglyphResult = detectHomoglyphs(hostname);

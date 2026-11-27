@@ -15,5 +15,11 @@ export default defineConfig({
       'declarativeNetRequestFeedback',
     ],
     host_permissions: ['<all_urls>'],
+    web_accessible_resources: [
+      {
+        resources: ['data/brand-registry.json'],
+        matches: ['<all_urls>'],
+      },
+    ],
   },
 })

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DemoBank Alpha - OTP Verification</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/mock-bank/styles.css" />
+</head>
+<body class="bg-[#0a0f1a] text-[#f1f5f9] min-h-screen flex items-center justify-center p-6">
+
+  <div class="max-w-md w-full bg-[#111827] border border-[#1f2937] rounded-2xl p-8 shadow-xl">
+    <!-- Header -->
+    <header class="mb-6 text-center">
+      <div class="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-[#06b6d4]/20 border border-[#06b6d4]/30 text-[#06b6d4] mb-3">
+        <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-white tracking-tight">Two-Factor Authentication</h1>
+      <p class="text-xs text-[#94a3b8] mt-1">DemoBank Alpha · Official Verified Portal</p>
+    </header>
+
+    <div class="bg-[#0f172a] border border-[#1f2937] rounded-xl p-4 mb-6">
+      <div class="flex items-center gap-2 text-xs text-[#10b981] mb-1 font-semibold">
+        <span class="w-2 h-2 rounded-full bg-[#10b981]"></span> Official Portal Verified
+      </div>
+      <p class="text-xs text-[#94a3b8]">Domain: <span class="font-mono text-white">demo-bank-a.example</span></p>
+    </div>
+
+    <!-- OTP Form -->
+    <form id="otp-form" novalidate>
+      <div class="mb-5">
+        <label for="otp" class="block text-sm font-medium text-[#94a3b8] mb-1">One-Time Password (OTP)</label>
+        <p class="text-xs text-[#94a3b8] mb-2">Enter the 6-digit code sent to your registered mobile number</p>
+        <div class="inline-block bg-[#0f172a] border border-[#06b6d4]/30 rounded-lg px-2.5 py-1 text-[11px] text-[#06b6d4] font-mono mb-3">
+          💡 Demo code: <strong>123456</strong> (or any 6-digit number)
+        </div>
+        <input
+          type="text"
+          name="otp"
+          id="otp"
+          maxlength="6"
+          autocomplete="one-time-code"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          class="w-full px-4 py-3 rounded-xl bg-[#0f172a] border border-[#334155] text-white placeholder-[#64748b] text-center text-2xl tracking-widest font-mono focus:outline-none focus:border-[#06b6d4] transition-colors"
+          placeholder="······"
+          required
+        />
+      </div>
+
+      <button
+        type="submit"
+        id="verify-btn"
+        class="w-full px-6 py-3 rounded-xl bg-[#06b6d4] text-white font-semibold hover:bg-[#0891b2] transition-colors shadow-lg shadow-[#06b6d4]/20"
+      >
+        Verify OTP & Continue
+      </button>
+
+      <div class="mt-4 text-center">
+        <a href="/mock-bank/official.html" class="text-xs text-[#06b6d4] hover:underline">← Back to Login</a>
+      </div>
+    </form>
+
+    <div id="status-msg" class="mt-4 text-center text-xs text-[#10b981] hidden">
+      Authentication successful! Redirecting to secure account summary...
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('otp-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      const otpInput = document.getElementById('otp');
+      const btn = document.getElementById('verify-btn');
+      const statusMsg = document.getElementById('status-msg');
+
+      if (!otpInput.value || otpInput.value.length < 4) {
+        alert('Please enter a valid OTP code (e.g. 123456).');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Verifying Code...';
+
+      // Legitimate same-origin verification
+      setTimeout(function () {
+        btn.textContent = 'Verified!';
+        btn.classList.remove('bg-[#06b6d4]');
+        btn.classList.add('bg-[#10b981]');
+        statusMsg.classList.remove('hidden');
+      }, 800);
+    });
+  </script>
+</body>
+</html>

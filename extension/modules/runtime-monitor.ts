@@ -76,7 +76,7 @@ function patchFetch(tabId: number) {
 
   (globalThis as any).fetch = function (input: RequestInfo, init?: RequestInit) {
     try {
-      const request = new typeof input === 'string' ? new Request(input, init || {}) : input;
+      const request = typeof input === 'string' ? new Request(input, init || {}) : input;
       const url = new URL(request.url);
 
       // Skip if same-origin (reduces noise)
@@ -246,7 +246,7 @@ function patchWebSocket(tabId: number) {
 
   (globalThis as any).WebSocket = function (url: string | URL, protocols?: string) {
     try {
-      const parsedUrl = new typeof url === 'string' ? new URL(url) : url;
+      const parsedUrl = typeof url === 'string' ? new URL(url) : url;
       const destHost = parsedUrl.hostname;
 
       // Skip same-origin

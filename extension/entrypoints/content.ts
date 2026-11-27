@@ -4,75 +4,90 @@
  * Runs in ISOLATED world — cannot directly access page's JavaScript APIs.
  */
 
-import { defineContentScript } from 'wxt/content-script'
+import { defineContentScript } from 'wxt/sandbox'
 import { analyzeDom } from '../modules/dom-analyzer'
 import { analyzeUrl } from '../modules/url-analyzer'
 import { assessRisk } from '../modules/risk-engine'
+import type { MonitoredRequest, UrlAnalysis, DomAnalysis, RiskAssessment } from '../types'
 
 export default defineContentScript({
   matches: ['<all_urls>'],
   world: 'ISOLATED',
   runAt: 'document_idle',
-  main(ctx) {
-    // --- Message forwarding from MAIN world ---
-    // MAIN world sends events via window.postMessage; we validate them here.
-    ctx.runtime.onMessage.addListener((message: any, sender) => {
+  main() {
+    let currentUrlAnalysis: UrlAnalysis | null = null
+    let currentDomAnalysis: DomAnalysis | null = null
+    const monitoredRequests: MonitoredRequest[] = []
+
+    async function runAnalysis(): Promise<void> {
+      try {
+        const url = window.location.href
+        currentUrlAnalysis = await analyzeUrl(url)
+        currentDomAnalysis = analyzeDom()
+        const assessment = assessRisk(currentUrlAnalysis, currentDomAnalysis, monitoredRequests)
+
+        await chrome.runtime.sendMessage({
+          kind: 'XRAY_ANALYSIS_COMPLETE',
+          payload: {
+            urlAnalysis: currentUrlAnalysis,
+            domAnalysis: currentDomAnalysis,
+            assessment,
+          },
+        })
+      } catch (e) {
+        console.error('[X-Ray] Content script analysis error:', e)
+      }
+    }
+
+    // Listen for commands from background worker (e.g. re-analyze)
+    chrome.runtime.onMessage.addListener((message: any) => {
       if (message?.kind === 'XRAY_REANALYZE') {
         void runAnalysis()
       }
     })
 
-    // Also listen for inline postMessage from page (MAIN world -> ISOLATED)
-    // Main-world script sends events; validate and forward
-    let messageHandler: (event: MessageEvent) => void
-    messageHandler = (event: MessageEvent) => {
+    // Listen for events from MAIN-world instrumentation via window.postMessage
+    // CRITICAL: Validate every event received through window.postMessage
+    window.addEventListener('message', (event: MessageEvent) => {
       if (event.source !== window) return
       const m = event.data as any
-      if (m?.kind !== 'XRAY_NETWORK_EVENT') return
-      // Validate minimal structure
-      if (!m.payload || !m.payload.id) return
-      // Forward validated event to background
-      void ctx.runtime.sendMessage({
-        kind: 'XRAY_NETWORK_EVENT',
-        payload: m.payload,
-      })
-    }
-    window.addEventListener('message', messageHandler)
+      if (m?.kind !== 'XRAY_NETWORK_EVENT' || !m.payload || !m.payload.id) return
 
-    // --- Initial analysis ---
+      const p = m.payload
+      const safeEvent: MonitoredRequest = {
+        id: String(p.id),
+        api: p.api,
+        method: p.method || 'GET',
+        url: p.url || '',
+        destinationHost: p.destinationHost || '',
+        timestamp: p.timestamp || Date.now(),
+        sourcePage: p.sourcePage || document.title || window.location.href,
+        resourceType: p.resourceType || '',
+        correlatedWithSensitiveInput: !!p.correlatedWithSensitiveInput,
+      }
+
+      monitoredRequests.push(safeEvent)
+      if (monitoredRequests.length > 50) {
+        monitoredRequests.shift()
+      }
+
+      // Forward validated event to background
+      void chrome.runtime.sendMessage({
+        kind: 'XRAY_NETWORK_EVENT',
+        payload: safeEvent,
+      })
+
+      // If correlated with sensitive input, trigger risk reassessment
+      if (safeEvent.correlatedWithSensitiveInput && currentUrlAnalysis && currentDomAnalysis) {
+        const updatedAssessment = assessRisk(currentUrlAnalysis, currentDomAnalysis, monitoredRequests)
+        void chrome.runtime.sendMessage({
+          kind: 'XRAY_RISK_UPDATE',
+          payload: { assessment: updatedAssessment },
+        })
+      }
+    })
+
+    // Run initial analysis when page is ready
     void runAnalysis()
   },
 })
-
-// ---------------------------------------------------------------------------
-// Core analysis functions
-// ---------------------------------------------------------------------------
-
-async function runAnalysis(): Promise<void> {
-  try {
-    // 1. URL analysis (ISOLATED world can use URL API safely)
-    const url = window.location.href
-    const urlAnalysis = await analyzeUrl(url)
-
-    // 2. DOM analysis (ISOLATED world can inspect DOM)
-    const domAnalysis = analyzeDom()
-
-    // 3. Initial risk assessment
-    const assessment = assessRisk(urlAnalysis, domAnalysis, [])
-
-    // 4. Send complete analysis to background
-    void ctx.runtime.sendMessage({
-      kind: 'XRAY_ANALYSIS_COMPLETE',
-      payload: { urlAnalysis, domAnalysis, assessment },
-    })
-  } catch (e) {
-    console.error('[X-Ray] Content script analysis error:', e)
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Exports for module system compatibility
-// ---------------------------------------------------------------------------
-
-// The main() closure above captures ctx; we also need runtime access for background sync.
-// ctx.runtime is provided by WXT's defineContentScript; export nothing needed externally.

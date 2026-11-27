@@ -37,7 +37,7 @@ export function isOtpField(input: HTMLInputElement): boolean {
   // Common input patterns for OTP (6-digit, 4-digit)
   const pattern = input.getAttribute('pattern') || input.getAttribute('inputmode');
   if (pattern) {
-    if (/\\d\{4,8\}/.test(pattern) || /\\d\{4,8\}/.test(input.maxlength?.toString() || '')) {
+    if (/\d{4,8}/.test(pattern) || /\d{4,8}/.test(input.maxLength?.toString() || '')) {
       return true;
     }
   }
@@ -77,7 +77,8 @@ function isUsernameField(input: HTMLInputElement): boolean {
  */
 function getSelector(el: HTMLElement): string {
   if (el.id) return `#${el.id}`;
-  if (el.name) return `[name="${el.name}"]`;
+  const name = (el as HTMLInputElement).name;
+  if (name) return `[name="${name}"]`;
   if (el.getAttribute('type')) return `input[type="${el.getAttribute('type')}"]`;
   return el.tagName.toLowerCase();
 }

@@ -80,7 +80,7 @@ async function saveConsentState(consentMap: Map<ConsentCategory, boolean>): Prom
 // Public API
 // ---------------------------------------------------------------------------
 
-const consentCache: Map<ConsentCategory, boolean> | null = null;
+let consentCache: Map<ConsentCategory, boolean> | null = null;
 
 export async function getConsent(category: ConsentCategory): Promise<boolean> {
   // Return cached value if available, otherwise load
@@ -158,17 +158,14 @@ export interface SecurityActionApproval {
 export async function recordSecurityAction(
   approval: SecurityActionApproval,
 ): Promise<void> {
-  const state = await loadConsentState();
-  // Store in metadata section
-  const metadata = state.get('metadata') || {};
-  metadata[approval.eventId] = {
-    ...approval,
-    consentCategories: approval.reason
-      ? [approval.reason.split(' ')[0] as ConsentCategory]
-      : [],
-  };
-  state.set('metadata', metadata);
-  await saveConsentState(state);
+  try {
+    const result = await chrome.storage.local.get('xray_security_actions');
+    const existing = result.xray_security_actions || [];
+    existing.push(approval);
+    await chrome.storage.local.set({ xray_security_actions: existing.slice(-100) });
+  } catch (e) {
+    console.warn('[X-Ray] Could not record security action:', e);
+  }
 }
 
 /**
@@ -283,12 +280,12 @@ export interface ForensicAction {
 /**
  * Generate forensic display data for a detected threat.
  */
-export function generateForensicDisplay(
+export async function generateForensicDisplay(
   assessment: RiskAssessment,
   urlAnalysis: UrlAnalysis | null,
   domAnalysis: DomAnalysis | null,
   canaryDetected: boolean,
-): ForensicDisplayEvent {
+): Promise<ForensicDisplayEvent> {
   const { score, level } = assessment;
   const consentGiven = await hasExtensionPermissions();
 
@@ -340,7 +337,7 @@ export function generateForensicDisplay(
         },
       });
       actions.push({
-        label 'Block and protect',
+        label: 'Block and protect',
         kind: 'primary',
         handler: async () => {
           await setConsent(ConsentCategories.CANARY_PROBE, false, 'user_decided_to_block');
@@ -369,8 +366,3 @@ export function generateForensicDisplay(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Export for use by background/content scripts
-// ---------------------------------------------------------------------------
-
-export { ConsentCategories };

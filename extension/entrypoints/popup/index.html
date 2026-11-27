@@ -3,43 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>X-Ray Security Extension</title>
-    <!-- Tailwind CSS via CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              xray: {
-                bg: '#0a0f1a',
-                card: '#111827',
-                border: '#1f2937',
-                accent: '#06b6d4',
-                accent2: '#10b981',
-                danger: '#ef4444',
-                warn: '#f59e0b',
-                text: '#f1f5f9',
-                muted: '#94a3b8',
-              },
-            },
-            fontFamily: {
-              sans: ['Inter', 'system-ui', 'sans-serif'],
-              mono: ['JetBrains Mono', 'monospace'],
-            },
-          },
-        },
-      };
-    </script>
-    <!-- Lucide icons via CDN -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <script type="module" src="./main.js"></script>
+    <title>X-Ray Security</title>
+    <link rel="stylesheet" href="./style.css" />
   </head>
-  <body class="bg-xray-bg text-xray-text font-sans antialiased">
+  <body>
     <div id="root"></div>
+    <script type="module" src="./main.ts"></script>
   </body>
 </html>

@@ -3,18 +3,14 @@
   "version": "1.0.0",
   "description": "AI-Assisted Browser Security Extension - Phishing Detection & Data Exfiltration Prevention",
   "private": true,
-  "workspaces": [
-    "extension",
-    "simulation"
-  ],
   "scripts": {
-    "setup": "node scripts/setup.js",
+    "setup": "python -m pip install -r simulation/requirements.txt && cd extension && npm install",
     "build:extension": "cd extension && npm run build",
     "dev:extension": "cd extension && npm run dev",
     "dev:server": "cd simulation && python server.py",
-    "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "cd tests/unit && npm test",
-    "test:integration": "cd tests/integration && npm test",
+    "test": "pytest tests/",
+    "test:unit": "pytest tests/test_unit.py",
+    "test:integration": "pytest tests/test_integration.py",
     "setup:simulation": "cd simulation && pip install -r requirements.txt"
   },
   "keywords": [

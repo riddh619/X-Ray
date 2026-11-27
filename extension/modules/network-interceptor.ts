@@ -77,6 +77,15 @@ interface DebuggerSession {
 
 let activeDebuggerSession: DebuggerSession | null = null;
 
+if (typeof chrome !== 'undefined' && chrome.debugger?.onDetach) {
+  chrome.debugger.onDetach.addListener((source, reason) => {
+    if (activeDebuggerSession && activeDebuggerSession.tabId === source.tabId) {
+      console.log(`[X-Ray] Debugger detached by user/browser for tab ${source.tabId}: ${reason}`);
+      activeDebuggerSession = null;
+    }
+  });
+}
+
 /**
  * Attach debugger to a tab and enable Fetch domain interception.
  */

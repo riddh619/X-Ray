@@ -1,34 +1,33 @@
 #!/usr/bin/env python3
 """
-X-Ray Simulation Server
-FastAPI backend for controlled mock banking environment.
-Serves the official and fake banking pages.
-Coordinates Canary Probe tests.
-Provides simulated attacker endpoints for detection.
+X-Ray Simulation Server & Canary Probe Coordinator
+FastAPI backend for controlled mock banking environment and Playwright Canary Probe.
 """
 
-from fastapi import FastAPI, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
+import asyncio
 import os
-import json
-import threading
+import random
 import time
 from pathlib import Path
+from typing import Any, Dict, Optional
+
+import uvicorn
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
-# App Setup
+# App Initialization
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="X-Ray Simulation Server",
-    description="Controlled mock banking environment for browser security testing",
-    version="1.0.0"
+    title="X-Ray Security Simulation Server",
+    description="Controlled mock banking and Playwright Canary Probe environment",
+    version="1.0.0",
 )
 
-# Enable CORS for local extension development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -37,174 +36,324 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------------------------------------------------------------------
-# Directory Setup
-# ---------------------------------------------------------------------------
-
 BASE_DIR = Path(__file__).parent / "webpages"
 MOCK_BANK_DIR = BASE_DIR / "mock-bank"
 ATTACK_DIR = BASE_DIR / "attacks"
 
-# Mount static directories
-app.mount("/mock-bank", StaticFiles(directory=str(MOCK_BANK_DIR)), name="mock-bank")
-app.mount("/attacks", StaticFiles(directory=str(ATTACK_DIR)), name="attacks")
-
-
 # ---------------------------------------------------------------------------
-# API Routes
+# Brand Registry
 # ---------------------------------------------------------------------------
 
-# Brand registry for tests
 BRAND_REGISTRY = {
     "demo-bank-a": {
-        "officialDomain": "demo-bank-a.example",
+        "brandId": "demo-bank-a",
         "brandName": "DemoBank Alpha",
-        "logoColor": "#06b6d4",
+        "officialDomain": "demo-bank-a.example",
+        "aliases": ["demobankalpha.example"],
+        "keywords": ["DemoBank Alpha", "Alpha Banking", "DemoBank"],
     },
     "demo-bank-b": {
-        "officialDomain": "demo-bank-b.example",
+        "brandId": "demo-bank-b",
         "brandName": "DemoBank Beta",
-        "logoColor": "#10b981",
+        "officialDomain": "demo-bank-b.example",
+        "aliases": ["demobankbeta.example", "beta-bank.example"],
+        "keywords": ["DemoBank Beta", "Beta Banking", "DemoBank B"],
+    },
+    "demo-bank-c": {
+        "brandId": "demo-bank-c",
+        "brandName": "DemoBank Gamma",
+        "officialDomain": "demo-bank-c.example",
+        "aliases": ["gammabank.example"],
+        "keywords": ["DemoBank Gamma", "Gamma Banking", "DemoBank G"],
     },
 }
 
-# Track canary probe results
-canary_state = {
-    "active": False,
-    "token": None,
+# ---------------------------------------------------------------------------
+# Canary Probe Execution Engine (Playwright)
+# ---------------------------------------------------------------------------
+
+last_canary_result: Dict[str, Any] = {
+    "status": "idle",
+    "tokenStatus": "none",
     "transmissionAttempted": False,
-    "detected": False,
+    "externalTransmissionBlocked": True,
+    "verdict": "No active probe executed yet.",
+    "startedAt": 0,
+    "finishedAt": 0,
 }
 
 
-@app.get("/")
-async def root():
-    """Serve the official mock banking page."""
-    return FileResponse(str(MOCK_BANK_DIR / "official.html"))
+class CanaryProbeRequest(BaseModel):
+    targetUrl: Optional[str] = "http://127.0.0.1:8000/mock-bank/fake.html"
+    customToken: Optional[str] = None
 
 
-@app.get("/mock-bank/official.html")
-async def official_bank():
-    """Serve the official mock banking website."""
-    return FileResponse(str(MOCK_BANK_DIR / "official.html"))
+async def run_playwright_canary_probe(target_url: str, synthetic_token: str) -> Dict[str, Any]:
+    """
+    Executes a synthetic OTP exfiltration probe inside an isolated Playwright browser context.
+    Strictly intercepts and blocks outbound traffic, observing if the target webpage attempts
+    to transmit the synthetic token.
+    """
+    started_at = int(time.time() * 1000)
+    transmission_attempted = False
+    observed_api = None
+    attempted_destination = None
 
+    try:
+        from playwright.async_api import async_playwright
 
-@app.get("/mock-bank/styles.css")
-async def official_styles():
-    """Serve the official mock banking stylesheet."""
-    return FileResponse(str(MOCK_BANK_DIR / "styles.css"))
+        async with async_playwright() as p:
+            # Launch isolated chromium instance
+            browser = await p.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+            )
+            context = await browser.new_context(
+                ignore_https_errors=True,
+                viewport={"width": 1280, "height": 800},
+            )
 
+            # Strict request interception
+            async def handle_route(route, request):
+                nonlocal transmission_attempted, observed_api, attempted_destination
+                url = request.url
+                post_data = request.post_data or ""
 
-# ---------------------------------------------------------------------------
-# Official Banking Page
-# ---------------------------------------------------------------------------
+                # Check if synthetic token is present in the request (body or url)
+                if (
+                    synthetic_token in post_data
+                    or (request.post_data_buffer and synthetic_token.encode() in request.post_data_buffer)
+                    or synthetic_token in url
+                ):
+                    transmission_attempted = True
+                    attempted_destination = url
+                    res_type = request.resource_type
+                    if res_type in ["fetch", "xhr", "beacon"]:
+                        observed_api = res_type
+                    else:
+                        observed_api = "fetch" if "fetch" in url else "form"
 
+                    # Abort outbound exfiltration request immediately
+                    await route.abort("blockedbyclient")
+                    return
 
-@app.get("/mock-bank/fake.html")
-async def fake_bank():
-    """Serve the fake banking website (brand/domain mismatch)."""
-    return FileResponse(str(ATTACK_DIR / "fake-bank.html"))
+                # Allow only safe local simulation resources
+                if "127.0.0.1" in url or "localhost" in url or url.startswith("file://") or url.startswith("data:"):
+                    await route.continue_()
+                else:
+                    # Block all external network access during probe
+                    await route.abort("blockedbyclient")
 
+            await context.route("**/*", handle_route)
 
-# ---------------------------------------------------------------------------
-# Canary Probe Endpoints
-# ---------------------------------------------------------------------------
+            page = await context.new_page()
+            await page.goto(target_url, wait_until="domcontentloaded", timeout=8000)
 
-@app.post("/canary/probe/start")
-async def canary_start(request: Request):
-    """Start a canary probe test."""
-    data = await request.json()
-    token = data.get("token")
+            # Locate OTP field and populate synthetic token
+            otp_selectors = [
+                'input[name="otp"]',
+                '#otp',
+                'input[autocomplete="one-time-code"]',
+                'input[placeholder*="OTP"]',
+                'input[type="text"]',
+            ]
 
-    canary_state.update({
-        "active": True,
-        "token": token,
-        "transmissionAttempted": False,
-        "detected": False,
-    })
+            otp_field = None
+            for sel in otp_selectors:
+                el = await page.query_selector(sel)
+                if el:
+                    otp_field = el
+                    break
 
-    return {"status": "started", "token": token}
+            if otp_field:
+                # Remove maxlength restrictions if present to allow full synthetic token
+                try:
+                    await page.evaluate("""() => {
+                        const inputs = document.querySelectorAll('input');
+                        inputs.forEach(i => {
+                            i.removeAttribute('maxlength');
+                            i.maxLength = 256;
+                        });
+                    }""")
+                except Exception:
+                    pass
 
+                await otp_field.fill(synthetic_token)
+                await asyncio.sleep(0.3)
 
-@app.post("/canary/probe/observe")
-async def canary_observe(request: Request):
-    """Report transmission attempt observation."""
-    data = await request.json()
-    canary_state["transmissionAttempted"] = data.get("transmissionAttempted", False)
-    canary_state["detected"] = data.get("detected", False)
+                # Submit form if present
+                submit_button = await page.query_selector('button[type="submit"], input[type="submit"], #submit-phish-btn')
+                if submit_button:
+                    await submit_button.click()
+                else:
+                    await page.keyboard.press("Enter")
 
-    return {"status": "observed", "transmissionAttempted": canary_state["transmissionAttempted"]}
+                # Allow brief window for asynchronous network transmission attempt
+                await asyncio.sleep(1.5)
 
+            await context.close()
+            await browser.close()
 
-@app.get("/canary/probe/status")
-async def canary_status():
-    """Get current canary probe status."""
+    except Exception as e:
+        finished_at = int(time.time() * 1000)
+        return {
+            "status": "error",
+            "tokenStatus": "generated",
+            "token": synthetic_token,
+            "error": str(e),
+            "transmissionAttempted": False,
+            "externalTransmissionBlocked": True,
+            "verdict": f"Canary probe encountered error: {str(e)}",
+            "startedAt": started_at,
+            "finishedAt": finished_at,
+        }
+
+    finished_at = int(time.time() * 1000)
+
+    if transmission_attempted:
+        verdict = "POTENTIAL EXFILTRATION ATTEMPT CONFIRMED"
+        status = "transmission_detected"
+    else:
+        verdict = "NO EXFILTRATION DETECTED - Webpage did not attempt to transmit synthetic OTP."
+        status = "no_transmission"
+
     return {
-        "status": "active" if canary_state["active"] else "idle",
-        "token": canary_state["token"],
-        "transmissionAttempted": canary_state["transmissionAttempted"],
-        "detected": canary_state["detected"],
+        "status": status,
+        "tokenStatus": "generated",
+        "token": synthetic_token,
+        "observedApi": observed_api or "fetch",
+        "attemptedDestination": attempted_destination or "None",
+        "transmissionAttempted": transmission_attempted,
+        "externalTransmissionBlocked": True,
+        "verdict": verdict,
+        "startedAt": started_at,
+        "finishedAt": finished_at,
     }
 
 
 # ---------------------------------------------------------------------------
-# Simulated Attack Endpoints
+# API Endpoints
 # ---------------------------------------------------------------------------
 
-# Attack 1: fetch() to collect OTP
+@app.get("/")
+async def root():
+    return FileResponse(str(MOCK_BANK_DIR / "official.html"))
+
+
+@app.get("/mock-bank/official.html")
+async def official_bank_page():
+    return FileResponse(str(MOCK_BANK_DIR / "official.html"))
+
+
+@app.get("/mock-bank/otp.html")
+async def official_bank_otp():
+    return FileResponse(str(MOCK_BANK_DIR / "otp.html"))
+
+
+@app.get("/mock-bank/styles.css")
+async def mock_bank_styles():
+    return FileResponse(str(MOCK_BANK_DIR / "styles.css"))
+
+
+@app.get("/mock-bank/fake.html")
+@app.get("/attacks/fake-bank.html")
+async def fake_bank_page():
+    return FileResponse(str(ATTACK_DIR / "fake-bank.html"))
+
+
+@app.get("/attacks/tracker.html")
+async def tracker_page():
+    return FileResponse(str(ATTACK_DIR / "tracker.html"))
+
+
+# ---------------------------------------------------------------------------
+# Canary Probe Routes
+# ---------------------------------------------------------------------------
+
+@app.post("/canary/probe/start")
+async def start_canary_probe(body: CanaryProbeRequest):
+    global last_canary_result
+
+    target_url = body.targetUrl or "http://127.0.0.1:8000/mock-bank/fake.html"
+    synthetic_token = body.customToken or f"XRAY_TEST_OTP_{random.randint(10000, 99999)}"
+
+    result = await run_playwright_canary_probe(target_url, synthetic_token)
+    last_canary_result = result
+    return result
+
+
+@app.get("/canary/probe/status")
+async def get_canary_probe_status():
+    return last_canary_result
+
+
+# ---------------------------------------------------------------------------
+# Simulated Attacker Endpoints
+# ---------------------------------------------------------------------------
+
 @app.post("/attacks/fetch-collect")
-async def fetch_collect(request: Request):
-    """Simulated attacker endpoint collecting OTP via fetch."""
-    # Return the canary token if it was sent
-    return {"status": "collected", "token": canary_state.get("token")}
+async def attacks_fetch_collect(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    return {
+        "status": "intercepted_by_endpoint",
+        "endpoint": "fetch-collect",
+        "received": body,
+        "timestamp": int(time.time() * 1000),
+    }
 
 
-# Attack 2: XHR to exfiltrate
 @app.post("/attacks/xhr-exfil")
-async def xhr_exfil(request: Request):
-    """Simulated attacker endpoint exfiltrating via XHR."""
-    body = await request.json()
-    return {"status": "exfiltrated", "data": body}
+async def attacks_xhr_exfil(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    return {
+        "status": "intercepted_by_endpoint",
+        "endpoint": "xhr-exfil",
+        "received": body,
+        "timestamp": int(time.time() * 1000),
+    }
 
 
-# Attack 3: sendBeacon
 @app.post("/attacks/sendbeacon-exfil")
-async def sendbeacon_exfil(request: Request):
-    """Simulated attacker endpoint via sendBeacon."""
-    form = await request.form()
-    return {"status": "beacon_sent", "data": dict(form)}
+async def attacks_beacon_exfil(request: Request):
+    body_raw = await request.body()
+    return {
+        "status": "intercepted_by_endpoint",
+        "endpoint": "sendbeacon-exfil",
+        "bytesReceived": len(body_raw),
+        "timestamp": int(time.time() * 1000),
+    }
 
 
-# ---------------------------------------------------------------------------
-# Brand Validation API
-# ---------------------------------------------------------------------------
+@app.post("/attacks/external-form")
+async def attacks_external_form(request: Request):
+    return HTMLResponse("<html><body><h3>Form data received at attacker endpoint.</h3></body></html>")
+
 
 @app.get("/brand/{brand_id}")
-async def brand_info(brand_id: str):
-    """Get brand domain information."""
-    brand = BRAND_REGISTRY.get(brand_id)
-    if brand:
-        return {"brandId": brand_id, ...brand}
-    return {"error": "Brand not found"}, 404
+async def get_brand(brand_id: str):
+    if brand_id in BRAND_REGISTRY:
+        return BRAND_REGISTRY[brand_id]
+    raise HTTPException(status_code=404, detail="Brand not registered")
 
-
-# ---------------------------------------------------------------------------
-# Health Check
-# ---------------------------------------------------------------------------
 
 @app.get("/health")
-async def health():
-    return {"status": "ok", "service": "x-ray-simulation"}
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "x-ray-simulation-server",
+        "timestamp": int(time.time()),
+    }
 
 
-# ---------------------------------------------------------------------------
-# Server Entry Point
-# ---------------------------------------------------------------------------
+# Mount static files as fallbacks
+app.mount("/mock-bank", StaticFiles(directory=str(MOCK_BANK_DIR)), name="mock-bank")
+app.mount("/attacks", StaticFiles(directory=str(ATTACK_DIR)), name="attacks")
 
 if __name__ == "__main__":
-    uvicorn.run(
-        app,
-        host="127.0.0.1",
-        port=8000,
-        log_level="info",
-    )
+    uvicorn.run(app, host="127.0.0.1", port=8000)
