@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # X-Ray: AI-Assisted Browser Security Extension
 
 ## Project Overview
@@ -502,3 +503,6 @@ npm run zip
 - FastAPI for simulation server simplicity
 - Playwright for browser automation capabilities
 - Chrome Extension APIs for security capabilities
+=======
+# X-Ray
+>>>>>>> 07b3a3619fd464ba3f2565a00c39ac0ca9ca2350
