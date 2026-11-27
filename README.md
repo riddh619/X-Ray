@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # X-Ray: AI-Assisted Browser Security Extension
 
 ## Project Overview
