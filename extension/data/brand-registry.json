@@ -1,0 +1,28 @@
+{
+  "$schema": "./brand-registry.schema.json",
+  "version": "1.0.0",
+  "description": "Local registry of verified brand-domain mappings for simulation purposes. These are EXAMPLE domains - replace with real verified domains in production.",
+  "brands": [
+    {
+      "brandId": "demo-bank-a",
+      "brandName": "DemoBank Alpha",
+      "officialDomain": "demo-bank-a.example",
+      "aliases": ["demobankalpha.example"],
+      "keywords": ["DemoBank Alpha", "Alpha Banking", "DemoBank"]
+    },
+    {
+      "brandId": "demo-bank-b",
+      "brandName": "DemoBank Beta",
+      "officialDomain": "demo-bank-b.example",
+      "aliases": ["demobankbeta.example", "beta-bank.example"],
+      "keywords": ["DemoBank Beta", "Beta Banking", "DemoBank B"]
+    },
+    {
+      "brandId": "demo-bank-c",
+      "brandName": "DemoBank Gamma",
+      "officialDomain": "demo-bank-c.example",
+      "aliases": ["gammabank.example"],
+      "keywords": ["DemoBank Gamma", "Gamma Banking", "DemoBank G"]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "name": "x-ray",
+  "version": "1.0.0",
+  "description": "AI-Assisted Browser Security Extension - Phishing Detection & Data Exfiltration Prevention",
+  "private": true,
+  "workspaces": [
+    "extension",
+    "simulation"
+  ],
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "build:extension": "cd extension && npm run build",
+    "dev:extension": "cd extension && npm run dev",
+    "dev:server": "cd simulation && python server.py",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "cd tests/unit && npm test",
+    "test:integration": "cd tests/integration && npm test",
+    "setup:simulation": "cd simulation && pip install -r requirements.txt"
+  },
+  "keywords": [
+    "browser-extension",
+    "security",
+    "phishing-detection",
+    "cybersecurity",
+    "chrome-extension",
+    "manifest-v3"
+  ],
+  "license": "MIT"
+}
